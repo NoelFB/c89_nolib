@@ -132,7 +132,7 @@ void platform_present()
 	/* Print Screen */
 	bminfo.bmiHeader.biSize = sizeof(bminfo.bmiHeader);
     bminfo.bmiHeader.biWidth = platform.width;
-    bminfo.bmiHeader.biHeight = -platform.height;
+    bminfo.bmiHeader.biHeight = -(NB_INT)platform.height;
     bminfo.bmiHeader.biPlanes = 1;
     bminfo.bmiHeader.biBitCount = 32;
     bminfo.bmiHeader.biCompression = BI_RGB;
