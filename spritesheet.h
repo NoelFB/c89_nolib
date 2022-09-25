@@ -1,7 +1,7 @@
 #ifndef NB_SPRITESHEET_H
 #define NB_SPRITESHEET_H
 
-/* This file is generated automatically via `spritesheet.c` in tools */
+/* This file is generated automatically via `spritegen.c` in tools */
 
 #define NB_SPRITESHEET_WIDTH 64
 #define NB_SPRITESHEET_HEIGHT 64
