@@ -1,4 +1,5 @@
 #include "game.h"
+#include "spritesheet.h"
 
 /* Platform Implementations */
 #include "platform_win32.c"
@@ -26,10 +27,19 @@ void nb_init()
 	for (j = 0; j < NB_ROOM_ROWS; j ++)
 		nb_game.tiles[i][j] = (i == 0 || j == 0 || i == NB_ROOM_COLS - 1 || j == NB_ROOM_ROWS - 1);
 
+	/* Default Palette */
+	nb_game.palette[NB_COL_0] = 0x30436a;
+	nb_game.palette[NB_COL_1] = 0xff8d78;
+	nb_game.palette[NB_COL_2] = 0xe8c562;
+	nb_game.palette[NB_COL_3] = 0xd4cdff;
+
 	/* Create some entities */
-	nb_en_create(nb_player, 32, 32);
-	for (i = 0; i < 6; i ++)
-		nb_en_create(nb_coin, 64 + i * 32, 32);
+	nb_en_create(nb_player, NB_ROOM_WIDTH / 2, NB_ROOM_HEIGHT / 2);
+	for (i = 0; i < 7; i ++)
+	{
+		nb_en_create(nb_coin, 32 + i * 32, 32);
+		nb_en_create(nb_coin, 32 + i * 32, NB_ROOM_HEIGHT - 32);
+	}
 }
 
 void nb_step()
@@ -53,7 +63,7 @@ void nb_step()
 		ny = ev.self->sy + ev.self->ry;
 
 		/* try to move */
-		if (ev.self->solids)
+		if ((ev.self->flags & NB_ENTITY_HITS_SOLIDS) != 0)
 		{
 			j = nx;
 			while (j != 0)
@@ -101,13 +111,13 @@ void nb_step()
 	{
 		ev.self = nb_game.entities + i;
 
-		if (ev.self->type == NB_NULL || ev.self->bw < 0 || ev.self->bh <= 0 || !ev.self->overlaps)
+		if (ev.self->type == NB_NULL || ev.self->bw < 0 || ev.self->bh <= 0 || (ev.self->flags & NB_ENTITY_OVERLAP_CHECKS) == 0)
 			continue;
 
 		for (j = 0; j < NB_ENTITIES; j ++)
 		{
 			ev.other = nb_game.entities + j;
-			if (i == j || ev.other->type == NB_NULL || ev.other->bw < 0 || ev.other->bh <= 0 || !ev.other->overlaps)
+			if (i == j || ev.other->type == NB_NULL || ev.other->bw < 0 || ev.other->bh <= 0 || (ev.other->flags & NB_ENTITY_OVERLAP_CHECKS) == 0)
 				continue;
 			if (nb_en_overlaps(ev.self, ev.other))
 				ev.self->type(&ev);
@@ -119,17 +129,17 @@ void nb_step()
 	nb_game.cam_y = nb_max(0, nb_min(NB_ROOM_HEIGHT - NB_HEIGHT, nb_game.cam_y)); 
 
 	/* draw bg */
-	nb_clear(0x222034);
+	nb_clear(NB_COL_0);
 	for (i = nb_game.cam_x / 32; i <= (nb_game.cam_x + NB_WIDTH) / 32; i ++)
-		nb_rect(i * 32, nb_game.cam_y, 1, NB_HEIGHT, 0x444444);
+		nb_rect(i * 32, nb_game.cam_y, 1, NB_HEIGHT, NB_COL_1);
 	for (i = nb_game.cam_y / 32; i <= (nb_game.cam_y + NB_HEIGHT) / 32; i ++)
-		nb_rect(nb_game.cam_x, i * 32, NB_WIDTH, 1, 0x444444);
+		nb_rect(nb_game.cam_x, i * 32, NB_WIDTH, 1, NB_COL_1);
 
 	/* draw solids */
 	for (i = 0; i < NB_ROOM_COLS; i ++)
 	for (j = 0; j < NB_ROOM_ROWS; j ++)
 		if (nb_game.tiles[i][j])
-			nb_rect(i * NB_GRID_SIZE, j * NB_GRID_SIZE, NB_GRID_SIZE, NB_GRID_SIZE, 0xffffff);
+			nb_rect(i * NB_GRID_SIZE, j * NB_GRID_SIZE, NB_GRID_SIZE, NB_GRID_SIZE, NB_COL_3);
 
 	/* draw entities */
 	ev.type = NB_ENTITY_DRAW;
@@ -231,6 +241,39 @@ void nb_rect(NB_INT x, NB_INT y, NB_INT w, NB_INT h, NB_COL color)
 		nb_game.screen[px + py * NB_WIDTH] = color;
 }
 
+void nb_spr(NB_INT x, NB_INT y, NB_INT spr_x, NB_INT spr_y, NB_INT spr_w, NB_INT spr_h)
+{
+	nb_spr_ext(x, y, spr_x, spr_y, spr_w, spr_h, NB_FALSE, NB_FALSE);
+}
+
+void nb_spr_ext(NB_INT x, NB_INT y, NB_INT spr_x, NB_INT spr_y, NB_INT spr_w, NB_INT spr_h, NB_BOOL flip_x, NB_BOOL flip_y)
+{
+	NB_INT px, py, dst_x, dst_y, src;
+
+	x -= nb_game.cam_x; 
+	y -= nb_game.cam_y;
+	spr_x = nb_max(0, spr_x * NB_GRID_SIZE);
+	spr_y = nb_max(0, spr_y * NB_GRID_SIZE);
+	spr_w = nb_min(NB_SPRITESHEET_WIDTH - spr_x, spr_w * NB_GRID_SIZE);
+	spr_h = nb_min(NB_SPRITESHEET_HEIGHT - spr_y, spr_h * NB_GRID_SIZE);
+	flip_x = (flip_x ? 1 : 0);
+	flip_y = (flip_y ? 1 : 0);
+
+	/* todo: clamp this to screen bounds before we 
+	 * begin iterating, to avoid the inner if statement 
+	 */
+	for (px = 0; px < spr_w; px++)
+	for (py = 0; py < spr_h; py++)
+	{
+		dst_x = x + px;
+		dst_y = y + py;
+		src  = (spr_x + px + (spr_w - 2 * px) * flip_x);
+		src += (spr_y + py + (spr_h - 2 * py) * flip_y) * NB_SPRITESHEET_WIDTH;
+		if (dst_x >= 0 && dst_y >= 0 && dst_x < NB_WIDTH && dst_y < NB_HEIGHT && nb_spritesheet[src] < NB_PALETTE)
+			nb_game.screen[dst_x + dst_y * NB_WIDTH] = nb_spritesheet[src];
+	}
+}
+
 NB_BOOL nb_down(Buttons btn) { return nb_game.btn[btn]; }
 NB_BOOL nb_pressed(Buttons btn) { return !nb_game.btn_prev[btn] && nb_game.btn[btn]; }
 NB_BOOL nb_released(Buttons btn) { return nb_game.btn_prev[btn] && !nb_game.btn[btn]; }
@@ -244,7 +287,7 @@ void nb_player(EntityEvent* ev)
 	const NB_FLT friction = 15;
 
 	Entity* self = ev->self;
-	NB_FLT p = (1 - nb_min(self->timer * 8, 1)) * 3;
+	NB_INT frame = 0;
 
 	if (ev->type == NB_ENTITY_INIT)
 	{
@@ -252,15 +295,20 @@ void nb_player(EntityEvent* ev)
 		self->by = -8;
 		self->bw = 8;
 		self->bh = 8;
-		self->solids = NB_TRUE;
-		self->overlaps = NB_TRUE;
+		self->flags = NB_ENTITY_OVERLAP_CHECKS | NB_ENTITY_HITS_SOLIDS;
 	}
 	else if (ev->type == NB_ENTITY_UPDATE)
 	{
 		if (nb_down(NB_LEFT))
+		{
 			nb_appr(self->sx, -max_speed, accel * NB_DELTA);
+			self->flags |= NB_ENTITY_FACING_LEFT;
+		}
 		else if (nb_down(NB_RIGHT))
+		{
 			nb_appr(self->sx, max_speed, accel * NB_DELTA);
+			self->flags &= ~NB_ENTITY_FACING_LEFT;
+		}
 		else
 			nb_appr(self->sx, 0, friction * NB_DELTA);
 
@@ -278,14 +326,13 @@ void nb_player(EntityEvent* ev)
 	else if (ev->type == NB_ENTITY_OVERLAP)
 	{
 		if (ev->other->type == nb_coin)
-		{
-			self->timer = 0;
 			nb_en_destroy(ev->other);
-		}
 	}
 	else if (ev->type == NB_ENTITY_DRAW)
 	{
-		nb_rect(self->x + self->bx - p, self->y + self->by - p, self->bw + p * 2, self->bh + p * 2, 0x6abe30);
+		frame = ((NB_INT)(self->timer * 8) % 2);
+		if (self->sx == 0 && self->sy == 0) frame = 0;
+		nb_spr_ext(self->x - 8, self->y - 16, frame * 2, 0, 2, 2, self->flags & NB_ENTITY_FACING_LEFT ? 1 : 0, NB_FALSE);
 	}
 }
 
@@ -293,6 +340,7 @@ void nb_coin(EntityEvent* ev)
 {
 	Entity* self = ev->self;
 	Entity* other;
+	NB_INT frame;
 
 	if (ev->type == NB_ENTITY_INIT)
 	{
@@ -300,11 +348,12 @@ void nb_coin(EntityEvent* ev)
 		self->by = -2;
 		self->bw = 4;
 		self->bh = 4;
-		self->overlaps = NB_TRUE;
+		self->flags = NB_ENTITY_OVERLAP_CHECKS;
 	}
 	else if (ev->type == NB_ENTITY_DRAW)
 	{
-		nb_rect(self->x + self->bx, self->y + self->by, self->bw, self->bh, 0xfbf236);
+		frame = ((NB_INT)(self->timer * 8) % 4);
+		nb_spr_ext(self->x - 4, self->y - 4, 4 + frame % 2, 0, 1, 1, frame > 1, 0);
 	}
 	else if (ev->type == NB_ENTITY_DESTROY)
 	{
@@ -341,6 +390,6 @@ void nb_pop(EntityEvent* ev)
 	}
 	else if (ev->type == NB_ENTITY_DRAW)
 	{
-		nb_rect(self->x - 1, self->y - 1, 2, 2, 0xfbf236);
+		nb_rect(self->x - 1, self->y - 1, 2, 2, NB_COL_2);
 	}
 }

@@ -14,6 +14,7 @@ struct Platform
 	NB_FLT   framecounter;
 	NB_BOOL  closing;
 	HWND     window;
+	NB_RGB   buffer[NB_WIDTH * NB_HEIGHT];
     HDC      buffer_memory;
     HBITMAP  buffer_bitmap;
 } platform;
@@ -112,6 +113,7 @@ LRESULT CALLBACK nb_win32_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 void nb_win32_present()
 {
 	HDC dc;
+	INT x, y;
 	FLOAT w, h, s;
 	RECT size;
 	HBRUSH bg;
@@ -130,6 +132,11 @@ void nb_win32_present()
 	FillRect(dc, &size, bg);
 	DeleteObject(bg);
 
+	/* Copy Palette Screen data to our RGB buffer */
+	for (x = 0; x < NB_WIDTH; x ++)
+	for (y = 0; y < NB_HEIGHT; y ++)
+		platform.buffer[x + y * NB_WIDTH] = nb_game.palette[nb_game.screen[x + y * NB_WIDTH]];
+
 	/* Print Screen */
 	bminfo.bmiHeader.biSize = sizeof(bminfo.bmiHeader);
     bminfo.bmiHeader.biWidth = NB_WIDTH;
@@ -139,7 +146,7 @@ void nb_win32_present()
     bminfo.bmiHeader.biCompression = BI_RGB;
     bminfo.bmiHeader.biXPelsPerMeter = 1;
     bminfo.bmiHeader.biYPelsPerMeter = 1;
-    SetDIBits(platform.buffer_memory, platform.buffer_bitmap, 0, NB_HEIGHT, nb_game.screen, &bminfo, 0);
+    SetDIBits(platform.buffer_memory, platform.buffer_bitmap, 0, NB_HEIGHT, platform.buffer, &bminfo, 0);
 	StretchBlt(dc, 
 		((size.right - size.left) - w) / 2, ((size.bottom - size.top) - h) / 2, w, h, 
 		platform.buffer_memory, 0, 0, NB_WIDTH, NB_HEIGHT, SRCCOPY);
