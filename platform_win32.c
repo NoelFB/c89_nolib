@@ -1,14 +1,16 @@
+/* 
+ * Note: Do not compile this file!
+ * It is included in game.c
+ * game.c should be the only file you compile
+ */
+
+#ifdef _WIN32
+
 #include "game.h"
 #include <windows.h>
 
 struct Platform
 {
-	NB_STR   name;
-	NB_UINT  fps;
-	NB_UINT  width;
-	NB_UINT  height;
-	NB_COL*  screen;
-	NB_BOOL* buttons;
 	NB_FLT   framecounter;
 	NB_BOOL  closing;
 	HWND     window;
@@ -20,7 +22,7 @@ struct Platform
 void _start(void)
 {
 	/* run the game */
-    game_entry();
+    nb_run();
 	
 	/* shutdown */
     DeleteDC(platform.buffer_memory);
@@ -39,34 +41,28 @@ LRESULT CALLBACK perform_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		PostQuitMessage(0);
 		return 0;
 	case WM_KEYDOWN:
-		if (wParam == VK_RIGHT) platform.buttons[BTN_RIGHT] = NB_TRUE;
-		if (wParam == VK_LEFT) platform.buttons[BTN_LEFT] = NB_TRUE;
-		if (wParam == VK_UP) platform.buttons[BTN_UP] = NB_TRUE;
-		if (wParam == VK_DOWN) platform.buttons[BTN_DOWN] = NB_TRUE;
+		if (wParam == VK_RIGHT) nb_game.btn[NB_RIGHT] = NB_TRUE;
+		if (wParam == VK_LEFT) nb_game.btn[NB_LEFT] = NB_TRUE;
+		if (wParam == VK_UP) nb_game.btn[NB_UP] = NB_TRUE;
+		if (wParam == VK_DOWN) nb_game.btn[NB_DOWN] = NB_TRUE;
 		return 0;
 	case WM_KEYUP:
-		if (wParam == VK_RIGHT) platform.buttons[BTN_RIGHT] = NB_FALSE;
-		if (wParam == VK_LEFT) platform.buttons[BTN_LEFT] = NB_FALSE;
-		if (wParam == VK_UP) platform.buttons[BTN_UP] = NB_FALSE;
-		if (wParam == VK_DOWN) platform.buttons[BTN_DOWN] = NB_FALSE;
+		if (wParam == VK_RIGHT) nb_game.btn[NB_RIGHT] = NB_FALSE;
+		if (wParam == VK_LEFT) nb_game.btn[NB_LEFT] = NB_FALSE;
+		if (wParam == VK_UP) nb_game.btn[NB_UP] = NB_FALSE;
+		if (wParam == VK_DOWN) nb_game.btn[NB_DOWN] = NB_FALSE;
 		return 0;
 	}
 
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-void platform_init(NB_STR name, NB_UINT fps, NB_UINT width, NB_UINT height, NB_COL* screen, NB_BOOL* buttons)
+void nb_platform_init()
 {
 	WNDCLASS wc;
 	HDC dc;
 
-	platform.name = name;
-	platform.fps = fps;
-	platform.width = width;
-	platform.height = height;
-	platform.screen = screen;
 	platform.closing = NB_FALSE;
-	platform.buttons = buttons;
 	platform.framecounter = 0;
 
 	/* Create Window Class */
@@ -81,18 +77,18 @@ void platform_init(NB_STR name, NB_UINT fps, NB_UINT width, NB_UINT height, NB_C
 	RegisterClass(&wc);
 
 	/* Open Window */
-	platform.window = CreateWindow("NB_WINDOW", name, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, width * 4, height * 4, NULL, NULL, NULL, NULL);
+	platform.window = CreateWindow("NB_WINDOW", NB_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, NB_WIDTH * 4, NB_HEIGHT * 4, NULL, NULL, NULL, NULL);
 	ShowWindow(platform.window, SW_SHOW);
 
 	/* create screen buffer */
 	dc = GetDC(platform.window);
 	platform.buffer_memory = CreateCompatibleDC(dc);
-    platform.buffer_bitmap = CreateCompatibleBitmap(dc, platform.width, platform.height);
+    platform.buffer_bitmap = CreateCompatibleBitmap(dc, NB_WIDTH, NB_HEIGHT);
     SelectObject(platform.buffer_memory, platform.buffer_bitmap);
 	ReleaseDC(platform.window, dc);
 }
 
-NB_BOOL platform_poll()
+NB_BOOL nb_platform_poll()
 {
 	MSG msg;
 
@@ -108,7 +104,7 @@ NB_BOOL platform_poll()
 	return NB_TRUE;
 }
 
-void platform_present()
+void nb_platform_present()
 {
 	HDC dc;
 	FLOAT w, h, s;
@@ -120,9 +116,9 @@ void platform_present()
 
 	/* Get Screen Size */
 	GetClientRect(platform.window, &size);
-	s = min((size.right - size.left) / (FLOAT)platform.width, (size.bottom - size.top) / (FLOAT)platform.height);
-	w = platform.width * s;
-	h = platform.height * s;
+	s = min((size.right - size.left) / (FLOAT)NB_WIDTH, (size.bottom - size.top) / (FLOAT)NB_HEIGHT);
+	w = NB_WIDTH * s;
+	h = NB_HEIGHT * s;
 
 	/* Draw Viewport Edges */
 	bg = CreateSolidBrush(RGB(0, 0, 0));
@@ -131,26 +127,25 @@ void platform_present()
 
 	/* Print Screen */
 	bminfo.bmiHeader.biSize = sizeof(bminfo.bmiHeader);
-    bminfo.bmiHeader.biWidth = platform.width;
-    bminfo.bmiHeader.biHeight = -(NB_INT)platform.height;
+    bminfo.bmiHeader.biWidth = NB_WIDTH;
+    bminfo.bmiHeader.biHeight = -(NB_INT)NB_HEIGHT;
     bminfo.bmiHeader.biPlanes = 1;
     bminfo.bmiHeader.biBitCount = 32;
     bminfo.bmiHeader.biCompression = BI_RGB;
-    bminfo.bmiHeader.biSizeImage = 0;
     bminfo.bmiHeader.biXPelsPerMeter = 1;
     bminfo.bmiHeader.biYPelsPerMeter = 1;
-    bminfo.bmiHeader.biClrUsed = 0;
-    bminfo.bmiHeader.biClrImportant = 0;
-    SetDIBits(platform.buffer_memory, platform.buffer_bitmap, 0, platform.height, platform.screen, &bminfo, 0);
+    SetDIBits(platform.buffer_memory, platform.buffer_bitmap, 0, NB_HEIGHT, nb_game.screen, &bminfo, 0);
 	StretchBlt(dc, 
 		((size.right - size.left) - w) / 2, ((size.bottom - size.top) - h) / 2, w, h, 
-		platform.buffer_memory, 0, 0, platform.width, platform.height, SRCCOPY);
+		platform.buffer_memory, 0, 0, NB_WIDTH, NB_HEIGHT, SRCCOPY);
 
 	/* Finish */
 	ReleaseDC(platform.window, dc);
 
 	/* Faking V-Sync */
-	platform.framecounter += (1000.0 / platform.fps);
+	platform.framecounter += (1000.0 / NB_FRAMERATE);
 	Sleep((INT)platform.framecounter);
 	platform.framecounter -= (INT)platform.framecounter;
 }
+
+#endif /* _WIN32 */
