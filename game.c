@@ -1,5 +1,9 @@
 #include "game.h"
 
+/* Platform Implementations */
+#include "platform_win32.c"
+#include "platform_x11.c"
+
 /* Global Variables */
 Game nb_game;
 const Entity nb_zero_entity;
@@ -9,135 +13,136 @@ const EntityType nb_entity_types[] = {
 
 /* Begin Game API */
 
-void nb_run()
+void nb_init()
 {
-	NB_INT i, j, nx, ny;
-	EntityEvent ev;
+	NB_INT i, j;
 
-	nb_platform_init();
+	/* Zero out entities */
+	for (i = 0; i < NB_ENTITIES; i ++)
+		nb_game.entities[i] = nb_zero_entity;
+
+	/* Zero out tiles with solids along room edges */
+	for (i = 0; i < NB_ROOM_COLS; i ++)
+	for (j = 0; j < NB_ROOM_ROWS; j ++)
+		nb_game.tiles[i][j] = (i == 0 || j == 0 || i == NB_ROOM_COLS - 1 || j == NB_ROOM_ROWS - 1);
 
 	/* Create some entities */
 	nb_en_create(nb_player, 32, 32);
 	for (i = 0; i < 6; i ++)
 		nb_en_create(nb_coin, 64 + i * 32, 32);
+}
 
-	/* Add solids along room edges */
-	for (i = 0; i < NB_ROOM_COLS; i ++)
-	for (j = 0; j < NB_ROOM_ROWS; j ++)
-		nb_game.tiles[i][j] = (i == 0 || j == 0 || i == NB_ROOM_COLS - 1 || j == NB_ROOM_ROWS - 1);
+void nb_step()
+{
+	NB_INT i, j, nx, ny;
+	EntityEvent ev;
 
-	while (nb_platform_poll())
+	/* run entities */
+	ev.type = NB_ENTITY_UPDATE;
+	for (i = 0; i < NB_ENTITIES; i ++)
 	{
-		/* run entities */
-		ev.type = NB_ENTITY_UPDATE;
-		for (i = 0; i < NB_ENTITIES; i ++)
+		ev.self = nb_game.entities + i;
+		
+		if (ev.self->type == NB_NULL)
+			continue;
+
+		ev.self->timer += 1.0f / 60.0f;
+
+		/* get move amount */
+		nx = ev.self->sx + ev.self->rx;
+		ny = ev.self->sy + ev.self->ry;
+
+		/* try to move */
+		if (ev.self->solids)
 		{
-			ev.self = nb_game.entities + i;
-			
-			if (ev.self->type == NB_NULL)
-				continue;
-
-			ev.self->timer += 1.0f / 60.0f;
-
-			/* get move amount */
-			nx = ev.self->sx + ev.self->rx;
-			ny = ev.self->sy + ev.self->ry;
-
-			/* try to move */
-			if (ev.self->solids)
+			j = nx;
+			while (j != 0)
 			{
-				j = nx;
-				while (j != 0)
+				ev.self->x += nb_sign(j);
+				if (nb_en_solids(ev.self))
 				{
-					ev.self->x += nb_sign(j);
-					if (nb_en_solids(ev.self))
-					{
-						ev.self->sx = ev.self->rx = nx = 0;
-						ev.self->x -= nb_sign(j);
-						break;
-					}
-					j -= nb_sign(j);
+					ev.self->sx = ev.self->rx = nx = 0;
+					ev.self->x -= nb_sign(j);
+					break;
 				}
-
-				j = ny;
-				while (j != 0)
-				{
-					ev.self->y += nb_sign(j);
-					if (nb_en_solids(ev.self))
-					{
-						ev.self->sy = ev.self->ry = ny = 0;
-						ev.self->y -= nb_sign(j);
-						break;
-					}
-					j -= nb_sign(j);
-				}
-			}
-			else
-			{
-				ev.self->x += nx;
-				ev.self->y += ny;
+				j -= nb_sign(j);
 			}
 
-			/* update move remainder */
-			ev.self->rx = ev.self->sx + ev.self->rx - nx;
-			ev.self->ry = ev.self->sy + ev.self->ry - ny;
-
-			/* call their update event */
-			ev.self->type(&ev);
-		}
-
-		/* do overlap tests */
-		ev.type = NB_ENTITY_OVERLAP;
-		for (i = 0; i < NB_ENTITIES; i ++)
-		{
-			ev.self = nb_game.entities + i;
-
-			if (ev.self->type == NB_NULL || ev.self->bw < 0 || ev.self->bh <= 0 || !ev.self->overlaps)
-				continue;
-
-			for (j = 0; j < NB_ENTITIES; j ++)
+			j = ny;
+			while (j != 0)
 			{
-				ev.other = nb_game.entities + j;
-				if (i == j || ev.other->type == NB_NULL || ev.other->bw < 0 || ev.other->bh <= 0 || !ev.other->overlaps)
-					continue;
-				if (nb_en_overlaps(ev.self, ev.other))
-					ev.self->type(&ev);
+				ev.self->y += nb_sign(j);
+				if (nb_en_solids(ev.self))
+				{
+					ev.self->sy = ev.self->ry = ny = 0;
+					ev.self->y -= nb_sign(j);
+					break;
+				}
+				j -= nb_sign(j);
 			}
 		}
-
-		/* make sure camera is inside the room bounds */
-		nb_game.cam_x = nb_max(0, nb_min(NB_ROOM_WIDTH - NB_WIDTH, nb_game.cam_x)); 
-		nb_game.cam_y = nb_max(0, nb_min(NB_ROOM_HEIGHT - NB_HEIGHT, nb_game.cam_y)); 
-
-		/* draw bg */
-		nb_clear(0x222034);
-		for (i = nb_game.cam_x / 32; i <= (nb_game.cam_x + NB_WIDTH) / 32; i ++)
-			nb_rect(i * 32, nb_game.cam_y, 1, NB_HEIGHT, 0x444444);
-		for (i = nb_game.cam_y / 32; i <= (nb_game.cam_y + NB_HEIGHT) / 32; i ++)
-			nb_rect(nb_game.cam_x, i * 32, NB_WIDTH, 1, 0x444444);
-
-		/* draw solids */
-		for (i = 0; i < NB_ROOM_COLS; i ++)
-		for (j = 0; j < NB_ROOM_ROWS; j ++)
-			if (nb_game.tiles[i][j])
-				nb_rect(i * NB_GRID_SIZE, j * NB_GRID_SIZE, NB_GRID_SIZE, NB_GRID_SIZE, 0xffffff);
-
-		/* draw entities */
-		ev.type = NB_ENTITY_DRAW;
-		for (i = 0; i < NB_ENTITIES; i ++)
+		else
 		{
-			ev.self = nb_game.entities + i;
-			if (ev.self->type != NB_NULL)
+			ev.self->x += nx;
+			ev.self->y += ny;
+		}
+
+		/* update move remainder */
+		ev.self->rx = ev.self->sx + ev.self->rx - nx;
+		ev.self->ry = ev.self->sy + ev.self->ry - ny;
+
+		/* call their update event */
+		ev.self->type(&ev);
+	}
+
+	/* do overlap tests */
+	ev.type = NB_ENTITY_OVERLAP;
+	for (i = 0; i < NB_ENTITIES; i ++)
+	{
+		ev.self = nb_game.entities + i;
+
+		if (ev.self->type == NB_NULL || ev.self->bw < 0 || ev.self->bh <= 0 || !ev.self->overlaps)
+			continue;
+
+		for (j = 0; j < NB_ENTITIES; j ++)
+		{
+			ev.other = nb_game.entities + j;
+			if (i == j || ev.other->type == NB_NULL || ev.other->bw < 0 || ev.other->bh <= 0 || !ev.other->overlaps)
+				continue;
+			if (nb_en_overlaps(ev.self, ev.other))
 				ev.self->type(&ev);
 		}
-
-		/* store previous button state */
-		for (i = 0; i < NB_BUTTON_COUNT; i ++)
-			nb_game.btn_prev[i] = nb_game.btn[i];
-
-		/* present screen */
-		nb_platform_present();
 	}
+
+	/* make sure camera is inside the room bounds */
+	nb_game.cam_x = nb_max(0, nb_min(NB_ROOM_WIDTH - NB_WIDTH, nb_game.cam_x)); 
+	nb_game.cam_y = nb_max(0, nb_min(NB_ROOM_HEIGHT - NB_HEIGHT, nb_game.cam_y)); 
+
+	/* draw bg */
+	nb_clear(0x222034);
+	for (i = nb_game.cam_x / 32; i <= (nb_game.cam_x + NB_WIDTH) / 32; i ++)
+		nb_rect(i * 32, nb_game.cam_y, 1, NB_HEIGHT, 0x444444);
+	for (i = nb_game.cam_y / 32; i <= (nb_game.cam_y + NB_HEIGHT) / 32; i ++)
+		nb_rect(nb_game.cam_x, i * 32, NB_WIDTH, 1, 0x444444);
+
+	/* draw solids */
+	for (i = 0; i < NB_ROOM_COLS; i ++)
+	for (j = 0; j < NB_ROOM_ROWS; j ++)
+		if (nb_game.tiles[i][j])
+			nb_rect(i * NB_GRID_SIZE, j * NB_GRID_SIZE, NB_GRID_SIZE, NB_GRID_SIZE, 0xffffff);
+
+	/* draw entities */
+	ev.type = NB_ENTITY_DRAW;
+	for (i = 0; i < NB_ENTITIES; i ++)
+	{
+		ev.self = nb_game.entities + i;
+		if (ev.self->type != NB_NULL)
+			ev.self->type(&ev);
+	}
+
+	/* store previous button state */
+	for (i = 0; i < NB_BUTTON_COUNT; i ++)
+		nb_game.btn_prev[i] = nb_game.btn[i];
 }
 
 Entity* nb_en_create(EntityType type, NB_INT x, NB_INT y)
@@ -226,9 +231,9 @@ void nb_rect(NB_INT x, NB_INT y, NB_INT w, NB_INT h, NB_COL color)
 		nb_game.screen[px + py * NB_WIDTH] = color;
 }
 
-NB_BOOL nb_down(NB_UINT btn) { return nb_game.btn[btn]; }
-NB_BOOL nb_pressed(NB_UINT btn) { return !nb_game.btn_prev[btn] && nb_game.btn[btn]; }
-NB_BOOL nb_released(NB_UINT btn) { return nb_game.btn_prev[btn] && !nb_game.btn[btn]; }
+NB_BOOL nb_down(Buttons btn) { return nb_game.btn[btn]; }
+NB_BOOL nb_pressed(Buttons btn) { return !nb_game.btn_prev[btn] && nb_game.btn[btn]; }
+NB_BOOL nb_released(Buttons btn) { return nb_game.btn_prev[btn] && !nb_game.btn[btn]; }
 
 /* Begin Entity Types */
 
@@ -339,6 +344,3 @@ void nb_pop(EntityEvent* ev)
 		nb_rect(self->x - 1, self->y - 1, 2, 2, 0xfbf236);
 	}
 }
-
-/* Begin Platform Implementations */
-#include "platform_win32.c"

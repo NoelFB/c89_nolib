@@ -18,11 +18,63 @@ struct Platform
     HBITMAP  buffer_bitmap;
 } platform;
 
-/* without libc wrapping it, _start() is the correct entry point */
-void _start(void)
+void nb_win32_run();
+void nb_win32_present();
+LRESULT CALLBACK nb_win32_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+void nb_win32_run()
 {
+	WNDCLASS wc;
+	HDC dc;
+	MSG msg;
+
+	/* Create Window Class */
+	wc.lpfnWndProc = DefWindowProc;
+	wc.lpszClassName = "NB_WINDOW";
+	wc.lpfnWndProc = nb_win32_poll;
+	wc.hIcon = NULL;
+	wc.lpszMenuName = NULL;
+	wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
+	wc.cbClsExtra = 0;
+	wc.cbWndExtra = 0;
+	RegisterClass(&wc);
+
+	/* Open Window */
+	platform.window = CreateWindow("NB_WINDOW", NB_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, NB_WIDTH * 4, NB_HEIGHT * 4, NULL, NULL, NULL, NULL);
+	ShowWindow(platform.window, SW_SHOW);
+
+	/* create screen buffer */
+	dc = GetDC(platform.window);
+	platform.buffer_memory = CreateCompatibleDC(dc);
+    platform.buffer_bitmap = CreateCompatibleBitmap(dc, NB_WIDTH, NB_HEIGHT);
+    SelectObject(platform.buffer_memory, platform.buffer_bitmap);
+	ReleaseDC(platform.window, dc);
+
 	/* run the game */
-    nb_run();
+	platform.closing = NB_FALSE;
+	platform.framecounter = 0;
+
+	nb_init();
+
+	while (1)
+	{
+		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+
+		if (platform.closing)
+			break;
+
+		nb_step();
+		nb_win32_present();
+
+		/* Faking V-Sync */
+		platform.framecounter += (1000.0 / NB_FRAMERATE);
+		Sleep((INT)platform.framecounter);
+		platform.framecounter -= (INT)platform.framecounter;
+	}
 	
 	/* shutdown */
     DeleteDC(platform.buffer_memory);
@@ -30,7 +82,7 @@ void _start(void)
 	DestroyWindow(platform.window);
 }
 
-LRESULT CALLBACK perform_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK nb_win32_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
 	{
@@ -57,54 +109,7 @@ LRESULT CALLBACK perform_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-void nb_platform_init()
-{
-	WNDCLASS wc;
-	HDC dc;
-
-	platform.closing = NB_FALSE;
-	platform.framecounter = 0;
-
-	/* Create Window Class */
-	wc.lpfnWndProc = DefWindowProc;
-	wc.lpszClassName = "NB_WINDOW";
-	wc.lpfnWndProc = perform_poll;
-	wc.hIcon = NULL;
-	wc.lpszMenuName = NULL;
-	wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
-	wc.cbClsExtra = 0;
-	wc.cbWndExtra = 0;
-	RegisterClass(&wc);
-
-	/* Open Window */
-	platform.window = CreateWindow("NB_WINDOW", NB_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, NB_WIDTH * 4, NB_HEIGHT * 4, NULL, NULL, NULL, NULL);
-	ShowWindow(platform.window, SW_SHOW);
-
-	/* create screen buffer */
-	dc = GetDC(platform.window);
-	platform.buffer_memory = CreateCompatibleDC(dc);
-    platform.buffer_bitmap = CreateCompatibleBitmap(dc, NB_WIDTH, NB_HEIGHT);
-    SelectObject(platform.buffer_memory, platform.buffer_bitmap);
-	ReleaseDC(platform.window, dc);
-}
-
-NB_BOOL nb_platform_poll()
-{
-	MSG msg;
-
-	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
-	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-	}
-
-	if (platform.closing)
-		return NB_FALSE;
-
-	return NB_TRUE;
-}
-
-void nb_platform_present()
+void nb_win32_present()
 {
 	HDC dc;
 	FLOAT w, h, s;
@@ -141,11 +146,12 @@ void nb_platform_present()
 
 	/* Finish */
 	ReleaseDC(platform.window, dc);
+}
 
-	/* Faking V-Sync */
-	platform.framecounter += (1000.0 / NB_FRAMERATE);
-	Sleep((INT)platform.framecounter);
-	platform.framecounter -= (INT)platform.framecounter;
+/* without libc wrapping it, _start() is the correct entry point */
+void _start(void)
+{
+	nb_win32_run();
 }
 
 #endif /* _WIN32 */

@@ -87,16 +87,17 @@ extern const Entity nb_zero_entity;
 extern const EntityType nb_entity_types[];
 
 /* Game API */
-void     nb_run          ();
+void     nb_init         ();
+void     nb_step         ();
 Entity*  nb_en_create    (EntityType type, NB_INT x, NB_INT y);
 NB_BOOL  nb_en_overlaps  (Entity* a, Entity* b);
 NB_BOOL  nb_en_solids    (Entity* entity);
 void     nb_en_destroy   (Entity* entity);
 void     nb_clear        (NB_COL color);
 void     nb_rect         (NB_INT x, NB_INT y, NB_INT w, NB_INT h, NB_COL color);
-NB_BOOL  nb_down         (NB_UINT btn);
-NB_BOOL  nb_pressed      (NB_UINT btn);
-NB_BOOL  nb_released     (NB_UINT btn);
+NB_BOOL  nb_down         (Buttons btn);
+NB_BOOL  nb_pressed      (Buttons btn);
+NB_BOOL  nb_released     (Buttons btn);
 
 /* Math Functions */
 #define  nb_min(x, y) ((x) < (y) ? (x) : (y))
@@ -108,10 +109,5 @@ NB_BOOL  nb_released     (NB_UINT btn);
 void     nb_player(EntityEvent*);
 void     nb_coin(EntityEvent*);
 void     nb_pop(EntityEvent*);
-
-/* Platform API */
-void     nb_platform_init();
-NB_BOOL  nb_platform_poll();
-void     nb_platform_present();
 
 #endif
