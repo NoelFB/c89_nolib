@@ -11,154 +11,150 @@
 
 struct Platform
 {
-	NB_FLT   framecounter;
-	NB_BOOL  closing;
-	HWND     window;
-	NB_RGB   buffer[NB_WIDTH * NB_HEIGHT];
+    NB_FLT   framecounter;
+    NB_BOOL  closing;
+    HWND     window;
+    NB_RGB   buffer[NB_WIDTH * NB_HEIGHT];
     HDC      buffer_memory;
     HBITMAP  buffer_bitmap;
+    HBRUSH   bg_brush;
 } platform;
 
-void nb_win32_run();
-void nb_win32_present();
 LRESULT CALLBACK nb_win32_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 void nb_win32_run()
 {
-	WNDCLASS wc;
-	HDC dc;
-	MSG msg;
+    INT x, y;
+    WNDCLASS wc;
+    HDC dc;
+    MSG msg;
+    BITMAPINFO bminfo;
 
-	/* Create Window Class */
-	wc.lpfnWndProc = DefWindowProc;
-	wc.lpszClassName = "NB_WINDOW";
-	wc.lpfnWndProc = nb_win32_poll;
-	wc.hIcon = NULL;
-	wc.lpszMenuName = NULL;
-	wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
-	wc.cbClsExtra = 0;
-	wc.cbWndExtra = 0;
-	RegisterClass(&wc);
+    /* Background Color is black */
+    platform.bg_brush = CreateSolidBrush(RGB(0, 0, 0));
+    platform.closing = NB_FALSE;
+    platform.framecounter = 0;
 
-	/* Open Window */
-	platform.window = CreateWindow("NB_WINDOW", NB_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, NB_WIDTH * 4, NB_HEIGHT * 4, NULL, NULL, NULL, NULL);
-	ShowWindow(platform.window, SW_SHOW);
+    /* Create Window Class */
+    wc.lpfnWndProc = DefWindowProc;
+    wc.lpszClassName = "NB_WINDOW";
+    wc.lpfnWndProc = nb_win32_poll;
+    RegisterClass(&wc);
 
-	/* create screen buffer */
-	dc = GetDC(platform.window);
-	platform.buffer_memory = CreateCompatibleDC(dc);
+    /* Open Window */
+    platform.window = CreateWindow("NB_WINDOW", NB_TITLE, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, 0, NB_WIDTH * 4, NB_HEIGHT * 4, NULL, NULL, NULL, NULL);
+    ShowWindow(platform.window, SW_SHOW);
+
+    /* create screen buffer */
+    dc = GetDC(platform.window);
+    platform.buffer_memory = CreateCompatibleDC(dc);
     platform.buffer_bitmap = CreateCompatibleBitmap(dc, NB_WIDTH, NB_HEIGHT);
     SelectObject(platform.buffer_memory, platform.buffer_bitmap);
-	ReleaseDC(platform.window, dc);
+    ReleaseDC(platform.window, dc);
 
-	/* run the game */
-	platform.closing = NB_FALSE;
-	platform.framecounter = 0;
+    /* run the game */
+    nb_init();
+    while (!platform.closing)
+    {
+        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
 
-	nb_init();
+        nb_step();
+        
+        /* Copy Palette Screen data to our RGB buffer */
+        for (x = 0; x < NB_WIDTH; x ++)
+        for (y = 0; y < NB_HEIGHT; y ++)
+            platform.buffer[x + y * NB_WIDTH] = nb_game.palette[nb_game.screen[x + y * NB_WIDTH]];
 
-	while (1)
-	{
-		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
+        /* Copy to buffer */
+        bminfo.bmiHeader.biSize = sizeof(bminfo.bmiHeader);
+        bminfo.bmiHeader.biWidth = NB_WIDTH;
+        bminfo.bmiHeader.biHeight = -(NB_INT)NB_HEIGHT;
+        bminfo.bmiHeader.biPlanes = 1;
+        bminfo.bmiHeader.biBitCount = 32;
+        bminfo.bmiHeader.biCompression = BI_RGB;
+        bminfo.bmiHeader.biXPelsPerMeter = 1;
+        bminfo.bmiHeader.biYPelsPerMeter = 1;
+        SetDIBits(platform.buffer_memory, platform.buffer_bitmap, 0, NB_HEIGHT, platform.buffer, &bminfo, 0);
 
-		if (platform.closing)
-			break;
+        /* Tell WM_PAINT to run */
+        InvalidateRect(platform.window, NULL, FALSE);
 
-		nb_step();
-		nb_win32_present();
-
-		/* Faking V-Sync */
-		platform.framecounter += (1000.0 / NB_FRAMERATE);
-		Sleep((INT)platform.framecounter);
-		platform.framecounter -= (INT)platform.framecounter;
-	}
-	
-	/* shutdown */
+        /* Faking V-Sync */
+        platform.framecounter += (1000.0 / NB_FRAMERATE);
+        Sleep((INT)platform.framecounter);
+        platform.framecounter -= (INT)platform.framecounter;
+    }
+    
+    /* shutdown */
+    DeleteObject(platform.bg_brush);
     DeleteDC(platform.buffer_memory);
     DeleteObject(platform.buffer_bitmap);
-	DestroyWindow(platform.window);
+    DestroyWindow(platform.window);
 }
 
 LRESULT CALLBACK nb_win32_poll(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	switch (msg)
-	{
-	case WM_CLOSE:
-		platform.closing = NB_TRUE;
-		return 0;
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		return 0;
-	case WM_KEYDOWN:
-		if (wParam == VK_RIGHT) nb_game.btn[NB_RIGHT] = NB_TRUE;
-		if (wParam == VK_LEFT) nb_game.btn[NB_LEFT] = NB_TRUE;
-		if (wParam == VK_UP) nb_game.btn[NB_UP] = NB_TRUE;
-		if (wParam == VK_DOWN) nb_game.btn[NB_DOWN] = NB_TRUE;
-		return 0;
-	case WM_KEYUP:
-		if (wParam == VK_RIGHT) nb_game.btn[NB_RIGHT] = NB_FALSE;
-		if (wParam == VK_LEFT) nb_game.btn[NB_LEFT] = NB_FALSE;
-		if (wParam == VK_UP) nb_game.btn[NB_UP] = NB_FALSE;
-		if (wParam == VK_DOWN) nb_game.btn[NB_DOWN] = NB_FALSE;
-		return 0;
-	}
+    PAINTSTRUCT ps;
+    HDC dc;
+    FLOAT s;
+    RECT size, fill, client;
 
-	return DefWindowProc(hwnd, msg, wParam, lParam);
-}
+    switch (msg)
+    {
+    case WM_CLOSE:
+        platform.closing = NB_TRUE;
+        return 0;
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    case WM_KEYDOWN:
+        if (wParam == VK_RIGHT) nb_game.btn[NB_RIGHT] = NB_TRUE;
+        if (wParam == VK_LEFT) nb_game.btn[NB_LEFT] = NB_TRUE;
+        if (wParam == VK_UP) nb_game.btn[NB_UP] = NB_TRUE;
+        if (wParam == VK_DOWN) nb_game.btn[NB_DOWN] = NB_TRUE;
+        return 0;
+    case WM_KEYUP:
+        if (wParam == VK_RIGHT) nb_game.btn[NB_RIGHT] = NB_FALSE;
+        if (wParam == VK_LEFT) nb_game.btn[NB_LEFT] = NB_FALSE;
+        if (wParam == VK_UP) nb_game.btn[NB_UP] = NB_FALSE;
+        if (wParam == VK_DOWN) nb_game.btn[NB_DOWN] = NB_FALSE;
+        return 0;
+    case WM_PAINT:
+        dc = BeginPaint(hwnd, &ps);
 
-void nb_win32_present()
-{
-	HDC dc;
-	INT x, y;
-	FLOAT w, h, s;
-	RECT size;
-	HBRUSH bg;
-    BITMAPINFO bminfo;
-	
-	dc = GetDC(platform.window);
+        /* Get Screen Size */
+        GetClientRect(platform.window, &client);
+        s = (INT)min((client.right - client.left) / (FLOAT)NB_WIDTH, (client.bottom - client.top) / (FLOAT)NB_HEIGHT);
+        size.left = ((client.right - client.left) - NB_WIDTH * s) / 2;
+        size.top = ((client.bottom - client.top) - NB_HEIGHT * s) / 2;
+        size.right = size.left + NB_WIDTH * s;
+        size.bottom = size.top + NB_HEIGHT * s;
 
-	/* Get Screen Size */
-	GetClientRect(platform.window, &size);
-	s = min((size.right - size.left) / (FLOAT)NB_WIDTH, (size.bottom - size.top) / (FLOAT)NB_HEIGHT);
-	w = NB_WIDTH * s;
-	h = NB_HEIGHT * s;
+        /* Fill outside with black */
+        SetRect(&fill, 0, 0, size.left, client.bottom); FillRect(dc, &fill, platform.bg_brush);
+        SetRect(&fill, size.right, 0, client.right, client.bottom); FillRect(dc, &fill, platform.bg_brush);
+        SetRect(&fill, size.left, 0, size.right, size.top); FillRect(dc, &fill, platform.bg_brush);
+        SetRect(&fill, size.left, size.bottom, size.right, client.bottom); FillRect(dc, &fill, platform.bg_brush);
 
-	/* Draw Viewport Edges */
-	bg = CreateSolidBrush(RGB(0, 0, 0));
-	FillRect(dc, &size, bg);
-	DeleteObject(bg);
+        /* Display screen on window */
+        StretchBlt(dc, size.left, size.top, size.right - size.left, size.bottom - size.top, 
+            platform.buffer_memory, 0, 0, NB_WIDTH, NB_HEIGHT, SRCCOPY);
 
-	/* Copy Palette Screen data to our RGB buffer */
-	for (x = 0; x < NB_WIDTH; x ++)
-	for (y = 0; y < NB_HEIGHT; y ++)
-		platform.buffer[x + y * NB_WIDTH] = nb_game.palette[nb_game.screen[x + y * NB_WIDTH]];
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
 
-	/* Print Screen */
-	bminfo.bmiHeader.biSize = sizeof(bminfo.bmiHeader);
-    bminfo.bmiHeader.biWidth = NB_WIDTH;
-    bminfo.bmiHeader.biHeight = -(NB_INT)NB_HEIGHT;
-    bminfo.bmiHeader.biPlanes = 1;
-    bminfo.bmiHeader.biBitCount = 32;
-    bminfo.bmiHeader.biCompression = BI_RGB;
-    bminfo.bmiHeader.biXPelsPerMeter = 1;
-    bminfo.bmiHeader.biYPelsPerMeter = 1;
-    SetDIBits(platform.buffer_memory, platform.buffer_bitmap, 0, NB_HEIGHT, platform.buffer, &bminfo, 0);
-	StretchBlt(dc, 
-		((size.right - size.left) - w) / 2, ((size.bottom - size.top) - h) / 2, w, h, 
-		platform.buffer_memory, 0, 0, NB_WIDTH, NB_HEIGHT, SRCCOPY);
-
-	/* Finish */
-	ReleaseDC(platform.window, dc);
+    return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 /* without libc wrapping it, _start() is the correct entry point */
 void _start(void)
 {
-	nb_win32_run();
+    nb_win32_run();
 }
 
 #endif /* _WIN32 */

@@ -19,7 +19,7 @@ int main()
 	
 	fprintf(file, "#ifndef NB_SPRITESHEET_H\n");
 	fprintf(file, "#define NB_SPRITESHEET_H\n\n");
-	fprintf(file, "/* This file is generated automatically via `spritesheet.c` in tools */\n\n");
+	fprintf(file, "/* This file is generated automatically via `spritegen.c` in tools */\n\n");
 	fprintf(file, "#define NB_SPRITESHEET_WIDTH %i\n", w);
 	fprintf(file, "#define NB_SPRITESHEET_HEIGHT %i\n", h);
     fprintf(file, "const unsigned char nb_spritesheet[] = {\n");
